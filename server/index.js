@@ -7,9 +7,9 @@ app.use(cors());
 app.use(express.json());
 
 const balances = {
-  "0x1": 100,
-  "0x2": 50,
-  "0x3": 75,
+  "b83ab85e1fbe71c7e7643df5de9f7cc6be4f96da": 100,
+  "c42da13bc0dcb20f3fb7af2433dfe10641721501": 50,
+  "4797dfec2b8a68b653344cdd803b6f6df8c5598c": 75,
 };
 
 app.get("/balance/:address", (req, res) => {
@@ -19,17 +19,25 @@ app.get("/balance/:address", (req, res) => {
 });
 
 app.post("/send", (req, res) => {
-  const { sender, recipient, amount } = req.body;
+  const { sender, recipient, amount, sign, recoveryBit } = req.body;
+  const message = {sender, amount,recipient};
+  const messageHash = hashMessage(JSON.stringify(message));
+  const recovered = secp.recoverPublicKey(messageHash, hexToBytes(sign), recoveryBit);
+
+  const addressOfSign = toHex(addressFromPublicKey(recovered));
+  console.log('addressOfSign:',addressOfSign);
 
   setInitialBalance(sender);
   setInitialBalance(recipient);
-
-  if (balances[sender] < amount) {
-    res.status(400).send({ message: "Not enough funds!" });
-  } else {
-    balances[sender] -= amount;
-    balances[recipient] += amount;
-    res.send({ balance: balances[sender] });
+  if(sender!==addressOfSign){
+    if (balances[sender] < amount) {
+      res.status(400).send({ message: "Not enough funds!" });
+    } else {
+      console.log("Public Key Verified");
+      balances[sender] -= amount;
+      balances[recipient] += amount;
+      res.send({ balance: balances[sender] });
+    }
   }
 });
 
@@ -41,4 +49,13 @@ function setInitialBalance(address) {
   if (!balances[address]) {
     balances[address] = 0;
   }
+}
+function hashMessage(message) {
+  const bytes = utf8ToBytes(message);
+  return keccak256(bytes);
+}
+function addressFromPublicKey(publicKey){
+  const addrBytes = publicKey.slice(1);
+  const hash = keccak256(addrBytes);
+  return hash.slice(-20);
 }
